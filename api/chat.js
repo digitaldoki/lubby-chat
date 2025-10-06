@@ -1,30 +1,21 @@
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Credentials', true);
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
-
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
-  }
-
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    const { messages } = req.body;
-
-    if (!messages || !Array.isArray(messages)) {
+    const { messages } = req.body || {};
+    if (!Array.isArray(messages)) {
       return res.status(400).json({ error: 'Invalid request: messages array required' });
     }
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) return res.status(500).json({ error: 'Missing OPENAI_API_KEY' });
+
+    const resp = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+        'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
         model: 'gpt-4o-mini',
@@ -40,17 +31,17 @@ export default async function handler(req, res) {
       })
     });
 
-    if (!response.ok) {
-      const error = await response.json();
-      return res.status(response.status).json({ error: 'AI service error' });
+    if (!resp.ok) {
+      // try to parse error JSON; fall back to text
+      let errBody;
+      try { errBody = await resp.json(); } catch { errBody = { text: await resp.text() }; }
+      return res.status(resp.status).json({ error: 'AI service error', details: errBody });
     }
 
-    const data = await response.json();
-    return res.status(200).json({
-      message: data.choices[0].message.content
-    });
-
-  } catch (error) {
+    const data = await resp.json();
+    return res.status(200).json({ message: data.choices?.[0]?.message?.content ?? 'No response' });
+  } catch (e) {
+    console.error(e);
     return res.status(500).json({ error: 'Internal server error' });
   }
 }
