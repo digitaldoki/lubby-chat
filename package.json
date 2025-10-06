@@ -1,3 +1,4 @@
+{ "type": "module" }
 {
   "name": "lubby-llama-chat",
   "version": "1.0.0",
